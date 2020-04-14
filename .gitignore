@@ -1,0 +1,8 @@
+# C files
+*.a
+*.o
+*.elf
+build/
+lib/
+# Vim
+*.swp
