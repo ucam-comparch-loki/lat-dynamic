@@ -31,7 +31,7 @@ A precompiled binary is available [here](no_link_yet).
 ## Usage
 
 ```
-lokisim --cores-per-tile=2 --accelerators-per-tile=1 lat-dynamic in-channels in-size in-sparsity out-channels out-sparsity filter-size [mode]"
+lokisim --cores-per-tile=2 --accelerators-per-tile=1 build/lat-dynamic in-channels in-size in-sparsity out-channels out-sparsity filter-size [mode]"
 ```
 
 The program models a single layer of a convolutional neural network. The layer chooses which computation to perform, and does not compute all output channels.
@@ -43,7 +43,7 @@ The program models a single layer of a convolutional neural network. The layer c
 * `filter-size` is the width/height of the convolutional filters to apply, in pixels.
 * `mode` determines how the sparsity is to be exploited:
     * `none`: do not exploit sparsity. Perform a full convolution between all inputs and all outputs.
-    * `simple`: perform individual 2D convolutions for each pair (`input`, `output`) where `input` and `output` are single channels which have been/will be computed.
+    * `simple` (default): perform individual 2D convolutions for each pair (`input`, `output`) where `input` and `output` are single channels which have been/will be computed.
     * `adaptive`: search through the available input/output channels for sequences of consecutive computed channels, and apply convolutions to the whole sequence simultaneously. This allows better data reuse, but requires additional control code.
 
 Running this code requires [lokisim](https://github.com/ucam-comparch-loki/lokisim/tree/accelerator) (accelerator branch).
