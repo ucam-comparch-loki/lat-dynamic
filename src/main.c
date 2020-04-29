@@ -9,18 +9,8 @@
 // For any section of the array, discarding values below X will give a result
 // which is roughly X% sparse.
 // Generated using:
-// python -c "import random; a=list(range(1,101)); random.shuffle(a); print(a)"
-int random[100] = {56, 9, 44, 60, 35, 84, 49, 42, 2, 83, 51, 33, 26, 17, 79, 89,
-    100, 74, 66, 45, 16, 41, 86, 69, 30, 93, 23, 25, 32, 22, 46, 78, 43, 15, 64,
-    99, 73, 7, 63, 40, 80, 54, 91, 55, 38, 37, 94, 8, 19, 75, 85, 68, 88, 72,
-    50, 3, 13, 1, 62, 70, 77, 28, 29, 27, 18, 34, 95, 58, 92, 82, 6, 4, 31, 53,
-    11, 67, 5, 81, 57, 39, 87, 10, 48, 61, 12, 59, 97, 20, 90, 65, 71, 21, 14,
-    47, 96, 76, 36, 98, 52, 24};
-
-// Random data used for activations, weights, etc.
-// Generated using:
-// python -c "import random; print([random.randint(-50,50) for _ in range(1000000)])"
-data_t big_random[1000000] = {
+// python -c "import random; print([random.randint(0,99) for _ in range(5000)])"
+int random[5000] = {
 #include "data.txt"
 };
 
@@ -86,20 +76,30 @@ void test_none(int in_channels, int in_size, int in_sparsity,
   channel_t mem_group_2 = mem_group_cpu; // TODO: use something specific
   channel_t mem_group_3 = mem_group_cpu; // TODO: use something specific
 
+  // Use uninitialised data for weights and activations.
+  // This will not affect the result unless fine-grained sparsity is exploited,
+  // or data is compressed.
+  data_t* input_ptr = loki_malloc(in_channels * in_size * in_size * sizeof(data_t));
+  data_t* weight_ptr = loki_malloc(in_channels * out_channels * filter_size * filter_size * sizeof(data_t));
+  int out_size = in_size - filter_size + 1;
+  data_t* output_ptr = loki_malloc(out_channels * out_size * out_size * sizeof(data_t));
+  assert(input_ptr != NULL);
+  assert(weight_ptr != NULL);
+  assert(output_ptr != NULL);
+
   // Step 0: create all necessary data buffers.
   // Assuming batch size of 1. Having larger batches is difficult for dynamic
   // workloads because each sample can take a different computation path.
   activation_config_t* input = init_activations(1, in_channels, in_size, in_size);
-  input->address = big_random;
+  input->address = input_ptr;
   input->memoryConfigEncoded = mem_group_1;
 
   filter_config_t* weights = init_weights(in_channels, out_channels, filter_size, filter_size);
-  weights->address = big_random + 500000;
+  weights->address = weight_ptr;
   weights->memoryConfigEncoded = mem_group_2;
 
-  int out_size = in_size - filter_size + 1;
   activation_config_t* output = init_activations(1, out_channels, out_size, out_size);
-  output->address = loki_malloc(out_channels * out_size * out_size * sizeof(data_t));
+  output->address = output_ptr;
   output->memoryConfigEncoded = mem_group_3;
 
   conv_shape_t shape;
@@ -154,11 +154,21 @@ void test_simple(int in_channels, int in_size, int in_sparsity,
     if (random[i] > in_sparsity)
       in_channels_used[in_channels_count++] = i;
 
+  // Use uninitialised data for weights and activations.
+  // This will not affect the result unless fine-grained sparsity is exploited,
+  // or data is compressed.
+  data_t* input_ptr = loki_malloc(in_channels_count * in_size * in_size * sizeof(data_t));
+  data_t* weight_ptr = loki_malloc(in_channels * out_channels * filter_size * filter_size * sizeof(data_t));
+  data_t* aux_weight_ptr = loki_malloc(in_channels * out_channels * sizeof(data_t));
+  assert(input_ptr != NULL);
+  assert(weight_ptr != NULL);
+  assert(aux_weight_ptr != NULL);
+
   // Step 0: create all necessary data buffers.
   // Assuming batch size of 1. Having larger batches is difficult for dynamic
   // workloads because each sample can take a different computation path.
   sparse_activations_t* input = init_sparse(1, in_channels_count, in_size, in_size);
-  input->data.address = big_random;
+  input->data.address = input_ptr;
   input->data.memoryConfigEncoded = mem_group_1;
   input->channels = in_channels_used;
 
@@ -168,7 +178,7 @@ void test_simple(int in_channels, int in_size, int in_sparsity,
   downsampled->channels = input->channels;
 
   filter_config_t* weights = init_weights(in_channels, out_channels, filter_size, filter_size);
-  weights->address = big_random + 500000;
+  weights->address = weight_ptr;
   weights->memoryConfigEncoded = mem_group_2;
 
   activation_config_t* aux_in = init_activations(1, in_channels, 1, 1);
@@ -176,7 +186,7 @@ void test_simple(int in_channels, int in_size, int in_sparsity,
   aux_in->memoryConfigEncoded = mem_group_cpu;
 
   filter_config_t* aux_weights = init_weights(in_channels, out_channels, 1, 1);
-  aux_weights->address = big_random + 900000;
+  aux_weights->address = aux_weight_ptr;
   aux_weights->memoryConfigEncoded = mem_group_2;
 
   activation_config_t* aux_out = init_activations(1, out_channels, 1, 1);
@@ -216,7 +226,7 @@ void test_simple(int in_channels, int in_size, int in_sparsity,
   int out_channels_count = 0;
   int* out_channels_used = loki_malloc(out_channels * sizeof(int));
   for (int i=0; i<out_channels; i++)
-    if (random[100 - i] > out_sparsity)
+    if (random[5000 - i] > out_sparsity)
       out_channels_used[out_channels_count++] = i;
 
   // We now know how much output will be produced.
@@ -316,11 +326,21 @@ void test_adaptive(int in_channels, int in_size, int in_sparsity,
     if (random[i] > in_sparsity)
       in_channels_used[in_channels_count++] = i;
 
+  // Use uninitialised data for weights and activations.
+  // This will not affect the result unless fine-grained sparsity is exploited,
+  // or data is compressed.
+  data_t* input_ptr = loki_malloc(in_channels_count * in_size * in_size * sizeof(data_t));
+  data_t* weight_ptr = loki_malloc(in_channels * out_channels * filter_size * filter_size * sizeof(data_t));
+  data_t* aux_weight_ptr = loki_malloc(in_channels * out_channels * sizeof(data_t));
+  assert(input_ptr != NULL);
+  assert(weight_ptr != NULL);
+  assert(aux_weight_ptr != NULL);
+
   // Step 0: create all necessary data buffers.
   // Assuming batch size of 1. Having larger batches is difficult for dynamic
   // workloads because each sample can take a different computation path.
   sparse_activations_t* input = init_sparse(1, in_channels_count, in_size, in_size);
-  input->data.address = big_random;
+  input->data.address = input_ptr;
   input->data.memoryConfigEncoded = mem_group_1;
   input->channels = in_channels_used;
 
@@ -330,7 +350,7 @@ void test_adaptive(int in_channels, int in_size, int in_sparsity,
   downsampled->channels = input->channels;
 
   filter_config_t* weights = init_weights(in_channels, out_channels, filter_size, filter_size);
-  weights->address = big_random + 500000;
+  weights->address = weight_ptr;
   weights->memoryConfigEncoded = mem_group_2;
 
   activation_config_t* aux_in = init_activations(1, in_channels, 1, 1);
@@ -338,7 +358,7 @@ void test_adaptive(int in_channels, int in_size, int in_sparsity,
   aux_in->memoryConfigEncoded = mem_group_cpu;
 
   filter_config_t* aux_weights = init_weights(in_channels, out_channels, 1, 1);
-  aux_weights->address = big_random + 900000;
+  aux_weights->address = aux_weight_ptr;
   aux_weights->memoryConfigEncoded = mem_group_2;
 
   activation_config_t* aux_out = init_activations(1, out_channels, 1, 1);
@@ -378,7 +398,7 @@ void test_adaptive(int in_channels, int in_size, int in_sparsity,
   int out_channels_count = 0;
   int* out_channels_used = loki_malloc(out_channels * sizeof(int));
   for (int i=0; i<out_channels; i++)
-    if (random[100 - i] > out_sparsity)
+    if (random[5000 - i] > out_sparsity)
       out_channels_used[out_channels_count++] = i;
 
   // We now know how much output will be produced.
@@ -496,6 +516,10 @@ int main(int argc, char** argv) {
   char* mode = "simple";
   if (argc > 7)
     mode = argv[7];
+
+  // A pre-allocated array of random numbers is used to choose which channels to
+  // skip over. (Generating random numbers is expensive to simulate.)
+  assert(in_channels + out_channels < 5000);
 
   if (!strcmp(mode, "none"))
     test_none(in_channels, in_size, in_sparsity, out_channels, out_sparsity,
