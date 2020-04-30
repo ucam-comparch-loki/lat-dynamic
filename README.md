@@ -26,7 +26,7 @@ export LAT_NN_DIR=path/to/lat-nn
 make
 ```
 
-A precompiled binary is available [here](no_link_yet).
+A precompiled binary is available [here](https://gist.github.com/db434/5615c50cd22d13efb67d4db99e723df8).
 
 ## Usage
 
