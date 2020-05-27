@@ -4,5 +4,6 @@
 *.elf
 build/
 lib/
+results/
 # Vim
 *.swp

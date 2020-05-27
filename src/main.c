@@ -5,21 +5,7 @@
 #include <loki/channels.h>
 #include <loki/spawn.h>
 #include <nn/layers.h>
-
-extern void init(int num_tiles);
-
-typedef void test_fn(const conv_shape_t* shape, void* data,
-                     int in_sparsity, int out_sparsity, int num_tiles);
-extern test_fn test_none;
-extern test_fn test_simple;
-extern test_fn test_adaptive;
-
-extern void* init_dense_buffers(const conv_shape_t* shape);
-extern void* init_sparse_buffers(const conv_shape_t* shape, int in_sparsity);
-
-typedef void dealloc_fn(void* buffers);
-extern dealloc_fn delete_dense_buffers;
-extern dealloc_fn delete_sparse_buffers;
+#include "defs.h"
 
 typedef struct {
   conv_shape_t shape;
