@@ -13,6 +13,29 @@ int random[5000] = {
 #include "data.txt"
 };
 
+// Some optimised loop orders for the specific computations we're doing.
+// To be used with:
+// lokisim --accelerator-broadcast-rows=1 --accelerator-broadcast-columns=0
+// --accelerator-accumulate-rows=0 --accelerator-accumulate-columns=1
+
+// Parallelise across channels.
+enum Loop LOOPS_MANY_CHANNELS[6] = {FILTER_HEIGHT_OS, FILTER_WIDTH_OS,
+  IMAGE_HEIGHT, IMAGE_WIDTH, OUT_CHANNELS, IN_CHANNELS};
+loop_nest_t LOOP_NEST_MANY_CHANNELS = {
+  .loop_count = 6,
+  .loops = LOOPS_MANY_CHANNELS
+};
+
+// Can't do the above: parallelise within a single channel.
+// The image is larger than the filter, so I would prefer to parallelise those
+// loops, but I think there's a lokisim bug which prevents that.
+enum Loop LOOPS_FEW_CHANNELS[6] = {OUT_CHANNELS, IN_CHANNELS,
+  IMAGE_HEIGHT, IMAGE_WIDTH, FILTER_HEIGHT_IS, FILTER_WIDTH_OS};
+loop_nest_t LOOP_NEST_FEW_CHANNELS = {
+  .loop_count = 6,
+  .loops = LOOPS_FEW_CHANNELS
+};
+
 void test_none(const conv_shape_t* shape, void* data,
                int in_sparsity, int out_sparsity, int num_tiles) {
   dense_buffers_t* buffers = (dense_buffers_t*)data;
@@ -32,7 +55,7 @@ void test_none(const conv_shape_t* shape, void* data,
   activation_config_t output_slice = get_output_conv_slice(&buffers->output, &tile_task);
 
   lat_conv2d(&input_slice, &weights_slice, &output_slice, &slice,
-             &LOOP_NEST_OUTPUT_STATIONARY);
+             &LOOP_NEST_MANY_CHANNELS);
 
 }
 
@@ -85,7 +108,7 @@ void test_simple(const conv_shape_t* shape, void* data,
   conv_shape_t conv_slice = get_conv_slice(shape, &conv_task);
   lat_linear(&aux_in_slice, &aux_weights_slice, &aux_out_slice,
              conv_slice.batch_size, conv_slice.in_channels, conv_slice.out_channels,
-             &LOOP_NEST_OUTPUT_STATIONARY);
+             &LOOP_NEST_MANY_CHANNELS);
 
   // Steps 3+4: discard any features below a threshold.
   // In order to have more control over the sparsity achieved, a predetermined
@@ -140,7 +163,7 @@ void test_simple(const conv_shape_t* shape, void* data,
         filter_config_t conv_w = weight_slice(&buffers->weights, in_c, in_c+1, out_c, out_c+1);
         activation_config_t conv_o = activation_slice(&buffers->output.dense, o, o+1);
 
-        lat_conv2d(&conv_i, &conv_w, &conv_o, &unit, &LOOP_NEST_OUTPUT_STATIONARY);
+        lat_conv2d(&conv_i, &conv_w, &conv_o, &unit, &LOOP_NEST_FEW_CHANNELS);
 
         // Give up any spare work, if requested.
         // TODO: Do this while waiting on the accelerator.
@@ -209,7 +232,7 @@ void test_adaptive(const conv_shape_t* shape, void* data,
   conv_shape_t conv_slice = get_conv_slice(shape, &conv_task);
   lat_linear(&aux_in_slice, &aux_weights_slice, &aux_out_slice,
              conv_slice.batch_size, conv_slice.in_channels, conv_slice.out_channels,
-             &LOOP_NEST_OUTPUT_STATIONARY);
+             &LOOP_NEST_MANY_CHANNELS);
 
   // Steps 3+4: discard any features below a threshold.
   // In order to have more control over the sparsity achieved, a predetermined
@@ -278,7 +301,7 @@ void test_adaptive(const conv_shape_t* shape, void* data,
         activation_config_t conv_o = activation_slice(&buffers->output.dense, o, o+unit.out_channels);
 
         // printf("%lu x %lu mini-conv\n", shape.in_channels, shape.out_channels);
-        lat_conv2d(&conv_i, &conv_w, &conv_o, &unit, &LOOP_NEST_OUTPUT_STATIONARY);
+        lat_conv2d(&conv_i, &conv_w, &conv_o, &unit, &LOOP_NEST_FEW_CHANNELS);
         // Potential optimisation: set up the next convolution while waiting for
         // this one to finish.
 
