@@ -99,4 +99,31 @@ typedef sparse_activations_t pool_sparse_act_slice_fn(const sparse_activations_t
 pool_sparse_act_slice_fn get_sparse_input_pool_slice;
 pool_sparse_act_slice_fn get_sparse_output_pool_slice;
 
+
+// Load balancing state.
+typedef struct {
+  unsigned int requests_made;
+  unsigned int requests_received;
+} lb_state_t;
+
+// Initialise the lb_state_t struct.
+void init_lb_state(lb_state_t* state, int num_tiles);
+
+// Check whether all load balancing opportunities have been taken.
+bool lb_finished(const lb_state_t* state);
+
+// Wait until all neighbours have finished. We may need to respond to their
+// requests.
+void lb_sync(lb_state_t* state);
+
+// Request more work.
+// Store the resulting task in the given parameter, and return whether there is
+// any work to do.
+bool make_load_balance_request(conv_task_t* task, lb_state_t* state, int num_tiles);
+
+// Iterations are counted within the current task only.
+// TODO: don't really want to pass current iteration counts.
+void check_load_balance_requests(conv_task_t* task, lb_state_t* state,
+                                 int in_channel_iteration, int out_channel_iteration);
+
 #endif // include guard

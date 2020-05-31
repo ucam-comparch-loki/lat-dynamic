@@ -46,6 +46,10 @@ activation_config_t activation_slice(const activation_config_t* tensor,
 
 sparse_activations_t sparse_activation_slice(const sparse_activations_t* tensor,
                                              int first_channel, int last_channel) {
+  // Note: in a real computation, this would be a good opportunity to
+  // redistribute the workload across parallel tiles. I don't do that here
+  // because I'm interested in how well other distribution methods work.
+
   // Start off assuming there are no channels available.
   int first_sparse_channel = tensor->num_channels;
   int num_sparse_channels = 0;
