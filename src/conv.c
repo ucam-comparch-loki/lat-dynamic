@@ -4,6 +4,8 @@
 #include <nn/layers.h>
 #include "defs.h"
 
+#define LOAD_BALANCE
+
 // Random data used to select output channels.
 // For any section of the array, discarding values below X will give a result
 // which is roughly X% sparse.
@@ -15,8 +17,7 @@ int random[5000] = {
 
 // Some optimised loop orders for the specific computations we're doing.
 // To be used with:
-// lokisim --accelerator-broadcast-rows=1 --accelerator-broadcast-columns=0
-// --accelerator-accumulate-rows=0 --accelerator-accumulate-columns=1
+// lokisim --accelerator-accumulate-rows=0 --accelerator-accumulate-columns=1
 
 // Parallelise across channels.
 enum Loop LOOPS_MANY_CHANNELS[6] = {FILTER_HEIGHT_OS, FILTER_WIDTH_OS,
@@ -146,11 +147,13 @@ void test_simple(const conv_shape_t* shape, void* data,
   unit.stride = 1;
   unit.dilation = 1;
 
+#ifdef LOAD_BALANCE
   // TODO: Make load balancing optional.
   lb_state_t load_balance;
   init_lb_state(&load_balance, num_tiles);
 
   while (!lb_finished(&load_balance)) {
+#endif
 
     // i and o iterate through only the channels which have been computed.
     for (int o=task.first_out_channel; o<task.last_out_channel; o++) {
@@ -165,12 +168,15 @@ void test_simple(const conv_shape_t* shape, void* data,
 
         lat_conv2d(&conv_i, &conv_w, &conv_o, &unit, &LOOP_NEST_FEW_CHANNELS);
 
+#ifdef LOAD_BALANCE
         // Give up any spare work, if requested.
         // TODO: Do this while waiting on the accelerator.
         check_load_balance_requests(&task, &load_balance, i+1, o);
+#endif
       }
     }
 
+#ifdef LOAD_BALANCE
     // Request new work from a neighbouring tile. This will update `task`.
     make_load_balance_request(&task, &load_balance, num_tiles);
 
@@ -178,6 +184,7 @@ void test_simple(const conv_shape_t* shape, void* data,
 
   // Ensure we respond to any outstanding requests.
   lb_sync(&load_balance);
+#endif
 
 }
 
@@ -269,11 +276,13 @@ void test_adaptive(const conv_shape_t* shape, void* data,
   unit.stride = 1;
   unit.dilation = 1;
 
+#ifdef LOAD_BALANCE
   // TODO: Make load balancing optional.
   lb_state_t load_balance;
   init_lb_state(&load_balance, num_tiles);
 
   while (!lb_finished(&load_balance)) {
+#endif
 
     // i and o iterate through only the channels which have been computed.
     for (int o=task.first_out_channel; o<task.last_out_channel; /*update within loop*/) {
@@ -307,14 +316,17 @@ void test_adaptive(const conv_shape_t* shape, void* data,
 
         i += unit.in_channels;
 
+#ifdef LOAD_BALANCE
         // Give up any spare work, if requested.
         // TODO: Do this while waiting on the accelerator.
         check_load_balance_requests(&task, &load_balance, i, o);
+#endif
       }
 
       o += unit.out_channels;
     }
 
+#ifdef LOAD_BALANCE
     // Request new work from a neighbouring tile. This will update `task`.
     make_load_balance_request(&task, &load_balance, num_tiles);
 
@@ -322,5 +334,6 @@ void test_adaptive(const conv_shape_t* shape, void* data,
 
   // Ensure we respond to any outstanding requests.
   lb_sync(&load_balance);
+#endif
 
 }

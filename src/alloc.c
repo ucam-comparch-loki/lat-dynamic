@@ -6,27 +6,31 @@ extern int* random;
 
 // Create an activation tensor. Allocation of data and assignment to a memory
 // group is not done. (User must set `address` and `data.memory_config`.)
-// Dimension order is BCHW.
+// Computation is parallelised over channels, so make them contiguous.
+// Dimension order is BHWC.
 void init_activations(activation_config_t* a,
                       int batch_size, int channels, int height, int width) {
-  a->row_stride = sizeof(data_t);
+  a->channel_stride = sizeof(data_t);
+  a->row_stride = channels * a->channel_stride;
   a->column_stride = width * a->row_stride;
-  a->channel_stride = height * a->column_stride;
-  a->batch_stride = channels * a->channel_stride;
+  a->batch_stride = height * a->column_stride;
 }
 
 // Create a weight tensor. Allocation of data and assignment to a memory
 // group is not done. (User must set `address` and `data.memory_config`.)
-// Dimension order is OIHW.
+// Computation is parallelised over channels, so make them contiguous.
+// Dimension order is HWOI.
 void init_weights(filter_config_t* f, int in_channels, int out_channels,
                   int filter_height, int filter_width) {
-  f->row_stride = sizeof(data_t);
+  f->in_channel_stride = sizeof(data_t);
+  f->out_channel_stride = in_channels * f->in_channel_stride;
+  f->row_stride = in_channels * f->out_channel_stride;
   f->column_stride = filter_width * f->row_stride;
-  f->out_channel_stride = filter_height * f->column_stride;
-  f->in_channel_stride = out_channels * f->out_channel_stride;
 }
 
 // Specialisation of activation_config_t for sparse activations.
+// Sparse computation is parallelised across X and Y, so make them contiguous.
+// Dimension order is BCHW.
 // User must also set `channels` array.
 void init_sparse(sparse_activations_t* a,
                  int batch_size, int channels, int height, int width) {
@@ -35,6 +39,18 @@ void init_sparse(sparse_activations_t* a,
   a->dense.channel_stride = height * a->dense.column_stride;
   a->dense.batch_stride = channels * a->dense.channel_stride;
   a->num_channels = channels;
+}
+
+// Create a weight tensor. Allocation of data and assignment to a memory
+// group is not done. (User must set `address` and `data.memory_config`.)
+// Sparse computation is parallelised across X and Y so make them contiguous.
+// Dimension order is OIHW.
+void init_weights_sparse(filter_config_t* f, int in_channels, int out_channels,
+                         int filter_height, int filter_width) {
+  f->row_stride = sizeof(data_t);
+  f->column_stride = filter_width * f->row_stride;
+  f->out_channel_stride = filter_height * f->column_stride;
+  f->in_channel_stride = out_channels * f->out_channel_stride;
 }
 
 
@@ -147,7 +163,7 @@ void* init_sparse_buffers(const conv_shape_t* shape, int in_sparsity) {
   };
   data->auxiliary = init_dense_buffers(&aux);
 
-  init_weights(&(data->weights), shape->in_channels, shape->out_channels, shape->filter_height, shape->filter_width);
+  init_weights_sparse(&(data->weights), shape->in_channels, shape->out_channels, shape->filter_height, shape->filter_width);
   data->weights.data.address = weight_ptr;
 
   init_sparse(&(data->output), shape->batch_size, shape->out_channels, out_size, out_size);
